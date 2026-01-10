@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blog-writer"
+version = "0.1.0"
+description = "CareOn Blog Writer - 블로그 원고 자동 생성 및 발행 시스템"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "CareOn", email = "dev@careon.kr"}
+]
+keywords = ["blog", "automation", "deepseek", "naver", "cctv"]
+
+dependencies = [
+    # Web Framework
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+
+    # HTTP Client
+    "aiohttp>=3.9.0",
+    "httpx>=0.25.0",
+
+    # Database
+    "supabase>=2.0.0",
+
+    # Browser Automation
+    "playwright>=1.40.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "tenacity>=8.2.0",
+    "loguru>=0.7.0",
+
+    # HTML/Markdown Processing
+    "beautifulsoup4>=4.12.0",
+    "markdown>=3.5.0",
+    "markdownify>=0.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+blog-writer = "src.api.main:main"
+generate-article = "scripts.generate_article:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311"]
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
