@@ -32,7 +32,7 @@ async def test_all_features():
     print("="*60)
 
     config = PublishConfig(
-        blog_id="tlswkehd_",
+        blog_id=os.environ.get("NAVER_BLOG_ID", "tlsdntjd89"),
         cdp_url="http://localhost:9222",
         deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY"),
         screenshot_dir="data/all_features_test"
