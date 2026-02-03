@@ -5,7 +5,7 @@ Blog Writer 데이터 모델
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
@@ -283,3 +283,127 @@ class GenerationOutline:
             "estimated_length": self.estimated_length,
             "target_keywords": self.target_keywords,
         }
+
+
+# ==================== Blog Archive ====================
+
+
+class ArchiveCategory(str, Enum):
+    """아카이브 카테고리"""
+    RENTAL_COMPARE = "렌탈비교"
+    LEGAL_ISSUES = "법적이슈"
+    HACKING_SECURITY = "해킹보안"
+    INSTALL_GUIDE = "설치가이드"
+    PRODUCT_REVIEW = "제품리뷰"
+    ENTRANCE_SECURITY = "현관보안"
+    VENDOR_COMPARE = "업체비교"
+    REGIONAL = "지역특화"
+    GENERAL = "general"
+
+
+class MigrationStatus(str, Enum):
+    """마이그레이션 상태"""
+    ARCHIVED = "archived"
+    QUEUED = "queued"
+    MIGRATED = "migrated"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class BlogArchive:
+    """블로그 아카이브 원본 포스트"""
+    id: str
+    original_title: str
+    original_content: str
+
+    # SEO 메모 분리
+    seo_memo: Optional[str] = None
+    clean_content: str = ""
+
+    # 파일 메타데이터
+    photo_count: int = 0
+    original_date: Optional[date] = None
+    view_count: int = 0
+
+    # 자동 분류
+    category: str = "general"
+    tags: List[str] = field(default_factory=list)
+    primary_keyword: Optional[str] = None
+
+    # 콘텐츠 분석
+    word_count: int = 0
+    has_seo_memo: bool = False
+    content_type: str = "article"
+
+    # articles 연결
+    article_id: Optional[str] = None
+    migration_status: str = "archived"
+
+    # 소스 추적
+    source_file: str = "blog-cctv.txt"
+    source_line: Optional[int] = None
+    parse_order: Optional[int] = None
+    import_batch_id: Optional[str] = None
+
+    # 타임스탬프
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """딕셔너리 변환"""
+        return {
+            "id": self.id,
+            "original_title": self.original_title,
+            "original_content": self.original_content,
+            "seo_memo": self.seo_memo,
+            "clean_content": self.clean_content,
+            "photo_count": self.photo_count,
+            "original_date": self.original_date.isoformat() if self.original_date else None,
+            "view_count": self.view_count,
+            "category": self.category,
+            "tags": self.tags,
+            "primary_keyword": self.primary_keyword,
+            "word_count": self.word_count,
+            "has_seo_memo": self.has_seo_memo,
+            "content_type": self.content_type,
+            "article_id": self.article_id,
+            "migration_status": self.migration_status,
+            "source_file": self.source_file,
+            "source_line": self.source_line,
+            "parse_order": self.parse_order,
+            "import_batch_id": self.import_batch_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BlogArchive":
+        """딕셔너리에서 생성"""
+        original_date = data.get("original_date")
+        if isinstance(original_date, str):
+            original_date = date.fromisoformat(original_date)
+
+        return cls(
+            id=data.get("id", ""),
+            original_title=data.get("original_title", ""),
+            original_content=data.get("original_content", ""),
+            seo_memo=data.get("seo_memo"),
+            clean_content=data.get("clean_content", ""),
+            photo_count=data.get("photo_count", 0),
+            original_date=original_date,
+            view_count=data.get("view_count", 0),
+            category=data.get("category", "general"),
+            tags=data.get("tags", []),
+            primary_keyword=data.get("primary_keyword"),
+            word_count=data.get("word_count", 0),
+            has_seo_memo=data.get("has_seo_memo", False),
+            content_type=data.get("content_type", "article"),
+            article_id=data.get("article_id"),
+            migration_status=data.get("migration_status", "archived"),
+            source_file=data.get("source_file", "blog-cctv.txt"),
+            source_line=data.get("source_line"),
+            parse_order=data.get("parse_order"),
+            import_batch_id=data.get("import_batch_id"),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None,
+        )

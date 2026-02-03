@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from supabase import create_client, Client
 
-from .models import Article, Keyword, PublishLog
+from .models import Article, Keyword, PublishLog, BlogArchive
 
 logger = logging.getLogger("blog_writer.supabase")
 
@@ -325,6 +325,136 @@ class SupabaseClient:
             )
             for d in result.data
         ]
+
+    # ==================== Blog Archive ====================
+
+    def create_archive(self, archive: BlogArchive) -> BlogArchive:
+        """아카이브 포스트 생성"""
+        data = archive.to_dict()
+        if data.get("id") == "":
+            del data["id"]
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+
+        result = self.client.table("blog_archive").insert(data).execute()
+
+        if result.data:
+            return BlogArchive.from_dict(result.data[0])
+        raise Exception("Failed to create archive")
+
+    def bulk_create_archives(self, archives: List[BlogArchive]) -> int:
+        """아카이브 포스트 일괄 생성 (배치 내 중복 제목 제거)"""
+        seen_titles = set()
+        rows = []
+        for archive in archives:
+            if archive.original_title in seen_titles:
+                continue
+            seen_titles.add(archive.original_title)
+            data = archive.to_dict()
+            if data.get("id") == "":
+                del data["id"]
+            data.pop("created_at", None)
+            data.pop("updated_at", None)
+            rows.append(data)
+
+        if not rows:
+            return 0
+
+        result = self.client.table("blog_archive").upsert(
+            rows, on_conflict="original_title"
+        ).execute()
+
+        return len(result.data)
+
+    def get_archive(self, archive_id: str) -> Optional[BlogArchive]:
+        """아카이브 포스트 조회"""
+        result = (
+            self.client.table("blog_archive")
+            .select("*")
+            .eq("id", archive_id)
+            .execute()
+        )
+
+        if result.data:
+            return BlogArchive.from_dict(result.data[0])
+        return None
+
+    def list_archives(
+        self,
+        category: str = None,
+        migration_status: str = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[BlogArchive]:
+        """아카이브 포스트 목록 조회"""
+        query = self.client.table("blog_archive").select("*")
+
+        if category:
+            query = query.eq("category", category)
+        if migration_status:
+            query = query.eq("migration_status", migration_status)
+
+        query = query.order("parse_order", desc=False).range(offset, offset + limit - 1)
+
+        result = query.execute()
+
+        return [BlogArchive.from_dict(item) for item in result.data]
+
+    def update_archive(
+        self, archive_id: str, updates: Dict[str, Any]
+    ) -> Optional[BlogArchive]:
+        """아카이브 포스트 업데이트"""
+        result = (
+            self.client.table("blog_archive")
+            .update(updates)
+            .eq("id", archive_id)
+            .execute()
+        )
+
+        if result.data:
+            return BlogArchive.from_dict(result.data[0])
+        return None
+
+    def get_archive_stats(self) -> Dict[str, Any]:
+        """아카이브 통계"""
+        total = (
+            self.client.table("blog_archive")
+            .select("id", count="exact")
+            .execute()
+        )
+
+        by_category = {}
+        for cat in [
+            "렌탈비교", "법적이슈", "해킹보안", "설치가이드",
+            "제품리뷰", "현관보안", "업체비교", "지역특화", "general",
+        ]:
+            result = (
+                self.client.table("blog_archive")
+                .select("id", count="exact")
+                .eq("category", cat)
+                .execute()
+            )
+            count = result.count or 0
+            if count > 0:
+                by_category[cat] = count
+
+        by_status = {}
+        for status in ["archived", "queued", "migrated", "skipped"]:
+            result = (
+                self.client.table("blog_archive")
+                .select("id", count="exact")
+                .eq("migration_status", status)
+                .execute()
+            )
+            count = result.count or 0
+            if count > 0:
+                by_status[status] = count
+
+        return {
+            "total": total.count or 0,
+            "by_category": by_category,
+            "by_migration_status": by_status,
+        }
 
     # ==================== Stats ====================
 

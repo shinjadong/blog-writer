@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.core.config import get_settings
-from src.api.routes import articles, publish, pipeline
+from src.api.routes import articles, publish, pipeline, archive
 
 # 로깅 설정
 logging.basicConfig(
@@ -61,6 +61,7 @@ app.add_middleware(
 app.include_router(articles.router, prefix="/articles", tags=["Articles"])
 app.include_router(publish.router, prefix="/publish", tags=["Publish"])
 app.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
+app.include_router(archive.router, prefix="/archive", tags=["Archive"])
 
 
 @app.get("/")
