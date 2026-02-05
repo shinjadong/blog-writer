@@ -267,6 +267,132 @@ class DeepSeekClient:
             frequency_penalty=0.1
         )
 
+    async def reason(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 16384
+    ) -> Dict[str, Any]:
+        """
+        DeepSeek Reasoner 모델 호출 (thinking 기능)
+
+        Reasoner 모델은 복잡한 분석과 추론이 필요한 작업에 사용됩니다.
+        temperature, top_p 파라미터를 지원하지 않습니다.
+
+        Args:
+            user_prompt: 사용자 프롬프트
+            system_prompt: 시스템 프롬프트 (선택)
+            max_tokens: 최대 토큰 수 (기본 16384)
+
+        Returns:
+            {
+                "reasoning_content": str,  # 추론 과정
+                "content": str,            # 최종 응답
+                "usage": dict              # 토큰 사용량
+            }
+        """
+        messages = []
+
+        if system_prompt:
+            messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+
+        messages.append({
+            "role": "user",
+            "content": user_prompt
+        })
+
+        payload = {
+            "model": "deepseek-reasoner",
+            "messages": messages,
+            "max_tokens": max_tokens
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=300)  # Reasoner는 더 오래 걸릴 수 있음
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"DeepSeek Reasoner API error: {response.status} - {error_text}")
+                        raise Exception(f"DeepSeek Reasoner API error: {response.status}")
+
+                    result = await response.json()
+                    message = result["choices"][0]["message"]
+
+                    # 토큰 사용량 로깅
+                    usage = result.get("usage", {})
+                    logger.info(
+                        f"DeepSeek Reasoner usage - prompt: {usage.get('prompt_tokens', 0)}, "
+                        f"completion: {usage.get('completion_tokens', 0)}, "
+                        f"reasoning: {usage.get('reasoning_tokens', 0)}, "
+                        f"total: {usage.get('total_tokens', 0)}"
+                    )
+
+                    return {
+                        "reasoning_content": message.get("reasoning_content", ""),
+                        "content": message.get("content", ""),
+                        "usage": usage
+                    }
+
+        except aiohttp.ClientError as e:
+            logger.error(f"HTTP client error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"DeepSeek Reasoner API call failed: {e}")
+            raise
+
+    async def reason_json(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 16384
+    ) -> Dict[str, Any]:
+        """
+        Reasoner로 JSON 응답 생성 (파싱 포함)
+
+        Args:
+            user_prompt: 프롬프트 (JSON 형식 응답 요청 포함)
+            system_prompt: 시스템 프롬프트
+            max_tokens: 최대 토큰 수
+
+        Returns:
+            {
+                "reasoning_content": str,
+                "data": dict,  # 파싱된 JSON
+                "usage": dict
+            }
+        """
+        result = await self.reason(user_prompt, system_prompt, max_tokens)
+
+        content = result["content"]
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            # JSON 부분만 추출 시도
+            start = content.find('{')
+            end = content.rfind('}') + 1
+            if start >= 0 and end > start:
+                try:
+                    data = json.loads(content[start:end])
+                except:
+                    logger.error(f"Failed to parse JSON from Reasoner: {content[:500]}")
+                    data = {"raw_content": content}
+            else:
+                data = {"raw_content": content}
+
+        return {
+            "reasoning_content": result["reasoning_content"],
+            "data": data,
+            "usage": result["usage"]
+        }
+
     async def health_check(self) -> bool:
         """API 연결 상태 확인"""
         try:

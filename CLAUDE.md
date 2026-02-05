@@ -32,48 +32,50 @@
 **blog-writer**는 CCTV 관련 블로그 콘텐츠를 AI로 자동 생성하고 네이버 블로그에 발행하는 시스템입니다.
 
 ### 역할
-1. **원고 생성**: DeepSeek API로 CCTV 도메인 특화 콘텐츠 생성
-2. **네이버 발행**: CDP(Chrome DevTools Protocol) 기반 자동 발행
-3. **트래픽 트리거**: 발행 후 ai-project API 호출로 트래픽 부스팅
+1. **SEO 자동포스팅**: CSV 키워드 → 네이버 검색 → 경쟁 분석(Reasoner) → SEO 원고 생성
+2. **원고 생성**: DeepSeek Chat/Reasoner로 CCTV 도메인 특화 콘텐츠 생성
+3. **네이버 발행**: CDP(Chrome DevTools Protocol) 기반 자동 발행
+4. **트래픽 트리거**: 발행 후 ai-project API 호출로 트래픽 부스팅
 
 ---
 
-## 3단계 파이프라인
+## SEO 자동포스팅 파이프라인 (핵심)
+
+```
+[Phase 1: 검색]                [Phase 2: 분석]              [Phase 3: 생성]              [Phase 4: 발행]
+CSV 키워드 ──▶ 네이버 검색 ──▶ DeepSeek Reasoner ──▶ SEO 원고 생성(Chat) ──▶ 네이버 발행
+                API 상위10개      경쟁분석/아웃라인        섹션별 콘텐츠           CDP 자동화
+```
+
+### 배치 실행
+```bash
+# 전체 키워드 배치 처리
+python -m src.pipeline.auto_publisher data/keyword_cctv-가격_combined.csv
+
+# 제한 개수
+python -m src.pipeline.auto_publisher data/keyword_cctv-가격_combined.csv 5
+
+# 단일 키워드
+python -m src.pipeline.auto_publisher --single "매장CCTV설치비용"
+```
+
+### 테스트
+```bash
+python scripts/test_seo_pipeline.py --mode search --keyword "CCTV설치비용"
+python scripts/test_seo_pipeline.py --mode reasoner
+python scripts/test_seo_pipeline.py --mode analyzer --keyword "CCTV설치비용"
+python scripts/test_seo_pipeline.py --mode full --keyword "매장CCTV설치비용"
+```
+
+---
+
+## 기존 3단계 파이프라인 (API)
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  1. 원고 생성   │────▶│  2. 네이버 발행  │────▶│  3. 트래픽 트리거│
 │  DeepSeek API   │     │  CDP 자동화     │     │  ai-project API │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-### Step 1: 원고 생성
-```bash
-POST /articles/generate
-{
-  "keyword": "CCTV 설치 비용",
-  "template_type": "informational",
-  "word_count": 2000
-}
-```
-
-### Step 2: 네이버 발행
-```bash
-POST /publish/{article_id}
-{
-  "blog_id": "your-blog-id",
-  "category": "IT/기술"
-}
-```
-
-### Step 3: 트래픽 트리거
-```bash
-# 내부적으로 ai-project API 호출
-POST http://localhost:8000/traffic/execute
-{
-  "campaign_id": "auto-created",
-  "blog_url": "https://blog.naver.com/..."
-}
 ```
 
 ---
@@ -84,7 +86,7 @@ POST http://localhost:8000/traffic/execute
 |------|------|
 | 언어 | Python 3.11+ |
 | 웹 프레임워크 | FastAPI |
-| AI | DeepSeek API |
+| AI | DeepSeek API (Chat + Reasoner) |
 | 브라우저 자동화 | Playwright + CDP |
 | 데이터베이스 | Supabase |
 
@@ -103,9 +105,20 @@ blog-writer/
 │   │   └── main.py               # FastAPI 서버 (포트 5001)
 │   │
 │   ├── content/
-│   │   ├── generator.py          # ContentGenerator
+│   │   ├── generator.py          # ContentGenerator (기존)
 │   │   └── prompts/
-│   │       └── cctv_domain.py    # CCTV 특화 프롬프트
+│   │       ├── cctv_domain.py    # CCTV 특화 프롬프트
+│   │       └── seo_prompts.py    # SEO 분석/원고 생성 프롬프트
+│   │
+│   ├── research/                 # [신규] 검색/분석 모듈
+│   │   ├── naver_search.py       # 네이버 블로그 검색 API
+│   │   └── competition_analyzer.py # 경쟁 분석 (Reasoner)
+│   │
+│   ├── pipeline/                 # [신규] 자동화 파이프라인
+│   │   └── auto_publisher.py     # CSV→검색→분석→생성 파이프라인
+│   │
+│   ├── shared/
+│   │   └── deepseek_client.py    # DeepSeek Chat + Reasoner
 │   │
 │   ├── publisher/
 │   │   └── naver_publisher.py    # CDP 기반 네이버 발행
@@ -113,8 +126,14 @@ blog-writer/
 │   └── traffic/
 │       └── trigger.py            # ai-project 트리거
 │
+├── scripts/
+│   └── test_seo_pipeline.py      # SEO 파이프라인 테스트
+│
 └── data/
-    └── cookies/                  # 네이버 로그인 쿠키
+    ├── keyword_*.csv              # 키워드 + 상태 관리
+    ├── search_results/            # 검색 결과 JSON
+    ├── generated_articles/        # 생성된 원고 JSON + MD
+    └── cookies/                   # 네이버 로그인 쿠키
 ```
 
 ---
@@ -124,11 +143,13 @@ blog-writer/
 ```bash
 # .env
 DEEPSEEK_API_KEY=your-deepseek-api-key
-SUPABASE_URL=https://pkehcfbjotctvneordob.supabase.co
+SUPABASE_URL=https://...supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
 AI_PROJECT_URL=http://localhost:8000
 AI_PROJECT_API_KEY=careon-traffic-engine-2026
 NAVER_BLOG_ID=your-blog-id
+NAVER_CLIENT_ID=your-naver-client-id       # [신규] 네이버 검색 API
+NAVER_CLIENT_SECRET=your-naver-secret      # [신규] 네이버 검색 API
 ```
 
 ---
@@ -172,18 +193,23 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 5001 --reload
 | NaverPublisher | ✅ 완료 |
 | TrafficTrigger | ✅ 완료 |
 | 파이프라인 API | ✅ 완료 |
+| NaverSearchClient | ✅ 완료 |
+| CompetitionAnalyzer | ✅ 완료 |
+| AutoPublisher (SEO 파이프라인) | ✅ 완료 |
+| DeepSeek Reasoner 연동 | ✅ 완료 |
+| CSV 배치 처리 | ✅ 완료 (63개 키워드) |
 | 네이버 쿠키 설정 | ⏳ 필요 |
 | 실 발행 테스트 | ⏳ 필요 |
 
 ---
 
-## 다음 작업
+## 주의사항
 
-1. Ubuntu에서 환경 설정
-2. Playwright 브라우저 설치
-3. 네이버 로그인 쿠키 저장
-4. 원고 생성 → 발행 테스트
+- DeepSeek Reasoner는 `temperature`, `top_p` 미지원
+- Reasoner 응답 시간 길 수 있음 (timeout 300초 설정)
+- 네이버 API rate limit 대응 (키워드 간 sleep 2초)
+- 키워드당 약 4.4분 소요 (63개 전체 ~4.6시간)
 
 ---
 
-*마지막 업데이트: 2026-01-10*
+*마지막 업데이트: 2026-02-05*
